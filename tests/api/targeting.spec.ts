@@ -40,7 +40,7 @@ test.describe('Targeting, scheduling, and cache boundaries', () => {
     const identical =
       payloads['home:ios'].size === payloads['home:android'].size &&
       [...payloads['home:ios']].every((t) => payloads['home:android'].has(t));
-    console.log(`Platform block sets identical (no current platform-specific content): ${identical}`);
+    expect(identical).toBe(true);
   });
 
   test('navigation destinations honor platform targeting', async () => {

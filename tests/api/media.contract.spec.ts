@@ -1,8 +1,12 @@
 import { test, expect, APIRequestContext } from '@playwright/test';
-import { getApiContext, baseParams } from '../../src/api/fixtures/request-factory';
-
-const ABSOLUTE_URL_PATTERN = /^https?:\/\/[\w.-]+\.[a-z]{2,}(\/.*)?$/i;
-const RELATIVE_MEDIA_PATH_PATTERN = /^\/api\/media\/file\/[\w.-]+\.(?:webp|jpg|jpeg|png|gif)$/i;
+import {
+  absoluteUrlPattern,
+  buildRequestParams,
+  disposeApiContext,
+  getApiContext,
+  getCmsResponse,
+  relativeMediaPathPattern,
+} from '../../src/api/fixtures/request-factory';
 
 test.describe('Media URL contract', () => {
   let apiContext: APIRequestContext;
@@ -11,79 +15,63 @@ test.describe('Media URL contract', () => {
     apiContext = await getApiContext();
   });
 
-  test('media references include absolute URLs (CloudFront CDN)', async () => {
-    const res = await apiContext.get(`${process.env.CMS_BASE_URL}/api/content/v1/bootstrap`, {
-      params: { ...baseParams },
-    });
-    expect(res.status()).toBe(200);
-    const { data } = await res.json();
+  test.afterAll(async () => {
+    await disposeApiContext();
+  });
 
-    const hasAbsoluteUrls =
-      data.alerts.some((alert: any) => alert.image?.url?.match(ABSOLUTE_URL_PATTERN));
+  test('media references use absolute URLs when provided', async () => {
+    const response = await getCmsResponse('/api/content/v1/bootstrap', buildRequestParams(), apiContext);
+    expect(response.status()).toBe(200);
 
-    expect(hasAbsoluteUrls).toBe(true);
+    const { data } = await response.json();
+    const image = data.alerts.find((alert: any) => alert.image?.url);
 
-    // Validate absolute URL structure
-    const alertWithImage = data.alerts.find((a: any) => a.image?.url);
-    if (alertWithImage) {
-      expect(alertWithImage.image.url).toMatch(ABSOLUTE_URL_PATTERN);
+    expect(image).toBeTruthy();
+    expect(image.image.url).toMatch(absoluteUrlPattern);
 
-      const sizes = alertWithImage.image.sizes ?? {};
-      for (const [key, size] of Object.entries(sizes)) {
-        if (typeof size === 'object' && (size as any).url) {
-          expect((size as any).url, `${key} size URL`).toMatch(ABSOLUTE_URL_PATTERN);
-        }
+    const sizes = image.image.sizes ?? {};
+    for (const [key, value] of Object.entries(sizes)) {
+      if (typeof value === 'object' && (value as any).url) {
+        expect((value as any).url, `${key} size URL`).toMatch(absoluteUrlPattern);
       }
     }
   });
 
-  test('media contract supports relative /api/media/file/{filename} paths', async () => {
-    const res = await apiContext.get(`${process.env.CMS_BASE_URL}/api/content/v1/bootstrap`, {
-      params: { ...baseParams },
-    });
-    const { data } = await res.json();
+  test('supports relative media paths from the public payload contract', async () => {
+    const response = await getCmsResponse('/api/content/v1/bootstrap', buildRequestParams(), apiContext);
+    const { data } = await response.json();
+    const image = data.alerts.find((alert: any) => alert.image?.filename);
 
-    const alertWithImage = data.alerts.find((a: any) => a.image?.filename);
-    if (alertWithImage) {
-      const filename = alertWithImage.image.filename;
+    expect(image).toBeTruthy();
 
-      const relativePath = `/api/media/file/${filename}`;
-      expect(relativePath).toMatch(RELATIVE_MEDIA_PATH_PATTERN);
+    const relativePath = `/api/media/file/${image.image.filename}`;
+    expect(relativePath).toMatch(relativeMediaPathPattern);
 
-      console.log('Media URL patterns supported by contract:', {
-        absolute: 'https://cdn.domain.com/file.webp',
-        relative: relativePath,
-        note: 'Client must handle both patterns identically',
-      });
-
-      const mediaRes = await apiContext.get(`${process.env.CMS_BASE_URL}${relativePath}`);
-      expect([200, 301, 302, 404]).toContain(mediaRes.status());
-    }
+    const mediaResponse = await apiContext.get(`${process.env.CMS_BASE_URL}${relativePath}`);
+    expect([200, 301, 302, 404]).toContain(mediaResponse.status());
   });
 
-  test('media URLs are non-empty and resolve to strings', async () => {
+  test('keeps media values as non-empty strings', async () => {
+    const response = await getCmsResponse('/api/content/v1/bootstrap', buildRequestParams({ platform: 'ios' }), apiContext);
+    const { data } = await response.json();
 
-    const res = await apiContext.get(`${process.env.CMS_BASE_URL}/api/content/v1/bootstrap`, {
-      params: { ...baseParams, platform: 'ios' },
-    });
-    const { data } = await res.json();
+    const mediaObjects = data.alerts
+      .filter((alert: any) => alert.image)
+      .map((alert: any) => alert.image);
 
-    const mediaObjects: any[] = [];
-    for (const alert of data.alerts) {
-      if (alert.image) mediaObjects.push(alert.image);
-    }
+    expect(mediaObjects.length).toBeGreaterThan(0);
 
     for (const media of mediaObjects) {
-      expect(typeof media.url, 'media.url').toBe('string');
-      expect(media.url).not.toBe(''); // Cannot be empty
-      
+      expect(typeof media.url).toBe('string');
+      expect(media.url).not.toBe('');
+
       if (media.thumbnailURL) {
         expect(typeof media.thumbnailURL).toBe('string');
         expect(media.thumbnailURL).not.toBe('');
       }
 
       if (media.sizes) {
-        for (const [key, size] of Object.entries(media.sizes)) {
+        for (const [, size] of Object.entries(media.sizes)) {
           if (typeof size === 'object' && (size as any).url) {
             expect(typeof (size as any).url).toBe('string');
             expect((size as any).url).not.toBe('');

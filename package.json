@@ -1,16 +1,28 @@
 {
   "name": "pmc-test-suite",
   "version": "1.0.0",
-  "description": "Identify the highest risks across: * Versioned content-contract compatibility:     - Platform-specific breaking changes on subsequent versions / React Native * Platform-specific delivery context     -  * React Native component composition and asynchronous behavior * CMS-driven navigation, actions, and destination resolution * Dynamic, optional, malformed, or future content * Network failures, cache validity, offline fallback, and nextChangeAt * Accessibility, large text, and touch interaction * iOS and Android behavioral differences * Mobile end-to-end reliability and diagnostics",
+  "description": "API contract and browser automation suite for the public Payload CMS and Casa Maíz website.",
   "main": "index.js",
-  "scripts": {},
-  "keywords": [],
+  "scripts": {
+    "test:api": "playwright test --project=api",
+    "test:web": "playwright test --project=web",
+    "test:all": "playwright test",
+    "check": "tsc --noEmit"
+  },
+  "keywords": [
+    "playwright",
+    "cms",
+    "api",
+    "contract-testing",
+    "content-automation"
+  ],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "devDependencies": {
     "@playwright/test": "^1.63.0",
-    "@types/node": "^26.6.2"
+    "@types/node": "^26.6.2",
+    "typescript": "^5.9.2"
   },
   "dependencies": {
     "dotenv": "^18.0.3"

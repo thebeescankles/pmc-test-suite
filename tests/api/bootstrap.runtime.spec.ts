@@ -1,9 +1,15 @@
-// tests/api/bootstrap.contract.spec.ts
 import { test, expect, APIRequestContext } from '@playwright/test';
-import { getApiContext, disposeApiContext } from '../../src/api/fixtures/request-factory';
+import {
+  buildRequestParams,
+  disposeApiContext,
+  expectDocumentedErrorShape,
+  expectEnvelopeStructure,
+  getApiContext,
+  getCmsResponse,
+} from '../../src/api/fixtures/request-factory';
 import { isContractCompatible } from '../../src/api/contracts/version-policy';
 
-test.describe('CMS Contract Validation', () => {
+test.describe('CMS contract validation', () => {
   let apiContext: APIRequestContext;
 
   test.beforeAll(async () => {
@@ -14,27 +20,29 @@ test.describe('CMS Contract Validation', () => {
     await disposeApiContext();
   });
 
-  test('returns valid contract version 1.1 in bootstrap response', async () => {
-    const response = await apiContext.get('/api/content/v1/bootstrap', {
-      params: {
-        platform: process.env.CMS_PLATFORM!,
-        market: process.env.CMS_MARKET!,
-        audience: process.env.CMS_AUDIENCE!,
-        appVersion: process.env.CMS_APP_VERSION!,
-      },
-    });
+  test('returns a compatible contract version in bootstrap', async () => {
+    const response = await getCmsResponse('/api/content/v1/bootstrap', buildRequestParams(), apiContext);
 
     expect(response.ok()).toBeTruthy();
 
     const body = await response.json();
+    expectEnvelopeStructure(body);
+    expect(isContractCompatible(body.contractVersion, process.env.SUPPORTED_CONTRACT_VERSION)).toBe(true);
+  });
 
-    expect(body).toHaveProperty('contractVersion');
-    expect(isContractCompatible(body.contractVersion, process.env.SUPPORTED_CONTRACT_VERSION)).toBe(true)
+  test('rejects invalid platform and appVersion inputs with the documented error contract', async () => {
+    const invalidPlatformResponse = await getCmsResponse('/api/content/v1/bootstrap', buildRequestParams({ platform: 'desktop' as any }), apiContext);
+    expect(invalidPlatformResponse.status()).toBe(400);
 
-    expect(body).toHaveProperty('data');
-    expect(typeof body.data).toBe('object');
-    if (body.metadata) {
-      expect(typeof body.metadata).toBe('object');
-    }
+    const invalidPlatformBody = await invalidPlatformResponse.json();
+    expectDocumentedErrorShape(invalidPlatformBody);
+    expect(invalidPlatformBody.error).toMatch(/platform/i);
+
+    const invalidVersionResponse = await getCmsResponse('/api/content/v1/bootstrap', buildRequestParams({ appVersion: 'bogus' }), apiContext);
+    expect(invalidVersionResponse.status()).toBe(400);
+
+    const invalidVersionBody = await invalidVersionResponse.json();
+    expectDocumentedErrorShape(invalidVersionBody);
+    expect(invalidVersionBody.error).toMatch(/appVersion/i);
   });
 });
